@@ -1,0 +1,30 @@
+# Core ML
+torch==2.1.2
+transformers==4.35.2
+datasets==2.15.0
+
+# FEMR - Stanford EHR framework
+femr==0.2.3
+
+# Data processing
+numpy
+pandas
+pyarrow
+scikit-learn
+
+# MEDS format support
+meds==0.3.3
+meds-etl==0.3.8
+
+# Evaluation & visualization
+matplotlib
+seaborn
+scipy
+
+# Notebooks
+jupyter
+ipykernel
+
+# Utilities
+tqdm
+pyyaml
