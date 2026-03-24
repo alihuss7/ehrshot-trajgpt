@@ -20,13 +20,13 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import yaml
 
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ehrshot.data_loading import build_patient_sequences, load_meds_dataset
+from models.trajgpt.config import TrajGPTConfig
 from models.trajgpt_embedder import TrajGPTEmbedder
 
 
@@ -38,8 +38,7 @@ def main():
     parser.add_argument("--checkpoint", type=str, default=None)
     args = parser.parse_args()
 
-    with open(args.config) as f:
-        config = yaml.safe_load(f)
+    config = TrajGPTConfig.load_yaml(args.config).to_dict()
 
     assets_dir = Path(config["assets_dir"])
     checkpoint_dir = Path(config["checkpoint_dir"])
@@ -112,7 +111,7 @@ def main():
     print(f"  data_matrix: {features['data_matrix'].shape} ({features['data_matrix'].dtype})")
     print(f"\nRun evaluation with:")
     print(f"  python scripts/02_run_evaluation.py --assets_dir {assets_dir} "
-          f"--features {features_path} --model_name trajgpt --output_dir results/trajgpt")
+          f"--features {features_path} --model_name trajgpt --output_dir {config['results_dir']}")
 
 
 if __name__ == "__main__":

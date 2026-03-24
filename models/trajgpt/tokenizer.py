@@ -2,8 +2,7 @@ from __future__ import annotations
 
 """Medical code tokenizer for TrajGPT-on-EHRSHOT.
 
-Strict mode: plain code-token vocabulary only (no extra composed features),
-matching the simple tokenization style used in the official TrajGPT repo.
+Code-token vocabulary only (no extra composed features).
 """
 
 import json

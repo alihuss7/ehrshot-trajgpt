@@ -1,16 +1,23 @@
 model_name: trajgpt
 
-# TrajGPT architecture (official repo defaults)
+# TrajGPT architecture defaults
 num_layers: 8
 num_heads: 4
 d_model: 200
 qk_dim: 200
 v_dim: 400
-ff_dim: 800
+ffn_proj_size: 800
 tau: 20
 dropout: 0.0
 max_seq_len: 256
 forecast_method: time_specific
+use_bias_in_sra: false
+use_bias_in_mlp: true
+use_bias_in_sra_out: false
+use_default_gamma: false
+output_retentions: false
+use_cache: true
+forward_impl: parallel
 
 # Data
 meds_data_dir: data/EHRSHOT_MEDS/data
@@ -22,14 +29,13 @@ pretrain_lr: 3.0e-05
 pretrain_batch_size: 32
 weight_decay: 0.01
 warmup_steps: 500
-forward_impl: parallel
 device: auto
 
 # Tokenization (code-only)
 tokenizer_min_count: 1
 
 # Outputs
-checkpoint_dir: results/gen2/trajgpt/checkpoints
-embedding_output_dir: results/gen2/trajgpt/embeddings
+checkpoint_dir: results/trajgpt_gen3_2026-03-24/checkpoints
+embedding_output_dir: results/trajgpt_gen3_2026-03-24/embeddings
 embedding_batch_size: 64
-results_dir: results/gen2/trajgpt
+results_dir: results/trajgpt_gen3_2026-03-24

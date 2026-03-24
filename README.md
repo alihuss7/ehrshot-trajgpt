@@ -1,108 +1,158 @@
 # ehrshot-trajgpt
 
-Comparing **TrajGPT** against **CLMBR-T-base** on the EHRSHOT benchmark.
+Comparing **TrajGPT** (Selective Recurrent Attention) against **CLMBR-T-base** (pretrained Transformer) on the [EHRSHOT benchmark](https://ehrshot.stanford.edu/) — 15 clinical prediction tasks across 6,739 patients.
 
-Track model changes and result snapshots in:
+## Setup
 
-```text
-MODEL_ACTIVITY.md
-```
-
-## Data Prerequisites
-Expected local folders:
-
-```text
-data/EHRSHOT_ASSETS
-data/EHRSHOT_MEDS
-```
-
-These come from the EHRSHOT release (DUA-restricted).
-
-## Environment (working setup used)
+### 1. Clone and install
 
 ```bash
+git clone <repo-url>
+cd ehrshot-trajgpt
 python3 -m venv .venv39
 source .venv39/bin/activate
 pip install -r requirements.txt
-pip install torch==2.1.2 pandas pyarrow scikit-learn scipy tqdm pyyaml "numpy<2"
 ```
 
-## Canonical Config
+### 2. Download EHRSHOT data
 
-Use:
+Request access at [Redivis](https://redivis.com/) and download:
 
-```text
-configs/trajgpt_ehrshot.yaml
-```
+| File                 | Size   | Required                                                    |
+| -------------------- | ------ | ----------------------------------------------------------- |
+| `EHRSHOT_ASSETS.zip` | 4.3 GB | Yes — precomputed CLMBR embeddings, labels, few-shot splits |
+| `EHRSHOT_MEDS.zip`   | 191 MB | Yes — MEDS-format patient event data for TrajGPT training   |
 
-## Commands We Used
-
-### 1) CLMBR-T-base baseline (from precomputed EHRSHOT_ASSETS features)
+Extract both into the `data/` directory:
 
 ```bash
-./.venv39/bin/python scripts/02_run_evaluation.py \
+mkdir -p data
+unzip EHRSHOT_ASSETS.zip -d data/
+unzip EHRSHOT_MEDS.zip -d data/
+```
+
+You should have:
+
+```
+data/
+  EHRSHOT_ASSETS/
+    benchmark/     # 15 task labels + few-shot splits
+    features/      # clmbr_features.pkl (precomputed 768-dim embeddings)
+    splits/        # train/val/test patient splits
+    ...
+  EHRSHOT_MEDS/
+    data/          # data.parquet (41.6M clinical events)
+    labels/        # per-task label parquets
+    metadata/      # codes, splits
+```
+
+## Running the Pipeline
+
+### Step 1: Evaluate CLMBR-T-base (baseline)
+
+CLMBR embeddings are precomputed in `EHRSHOT_ASSETS`. No model download needed.
+
+```bash
+python scripts/02_run_evaluation.py \
   --assets_dir data/EHRSHOT_ASSETS \
   --model_name clmbr-t-base \
-  --output_dir results/gen2/clmbr-t-base
+  --output_dir results/clmbr-t-base
 ```
 
-This uses `data/EHRSHOT_ASSETS/features/clmbr_features.pkl` by default.
+Output: `results/clmbr-t-base/summary.csv`
 
-Optional/legacy: `scripts/01_extract_embeddings.py` exists for regenerating
-CLMBR embeddings from scratch, but it is not used in the canonical pipeline
-documented here.
+### Step 2: Pretrain TrajGPT
 
-### 2) TrajGPT pretraining
+Trains TrajGPT from scratch on EHRSHOT patient sequences (~20 epochs, ~60 min on Apple Silicon MPS).
 
 ```bash
-./.venv39/bin/python scripts/03_pretrain_trajgpt.py \
-  --config configs/trajgpt_ehrshot.yaml
+python scripts/03_pretrain_trajgpt.py --config configs/trajgpt_ehrshot.yaml
 ```
 
-Outputs checkpoints under:
+Output: `results/trajgpt/checkpoints/best_model.pt` + `tokenizer.json`
 
-```text
-results/gen2/trajgpt/checkpoints
-```
+### Step 3: Extract TrajGPT embeddings
 
-### 3) TrajGPT embedding extraction (CLMBR-compatible pickle output)
+Extracts 200-dim embeddings for all 406K (patient, prediction_time) pairs.
 
 ```bash
-./.venv39/bin/python scripts/04_extract_trajgpt_embeddings.py \
-  --config configs/trajgpt_ehrshot.yaml
+python scripts/04_extract_trajgpt_embeddings.py --config configs/trajgpt_ehrshot.yaml
 ```
 
-Output:
+Output: `results/trajgpt/embeddings/trajgpt_features.pkl`
 
-```text
-results/gen2/trajgpt/embeddings/trajgpt_features.pkl
-```
+### Step 4: Evaluate TrajGPT
 
-### 4) TrajGPT evaluation on EHRSHOT tasks
+Same evaluation script as CLMBR, just point to TrajGPT features.
 
 ```bash
-KMP_DUPLICATE_LIB_OK=TRUE OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
-./.venv39/bin/python scripts/02_run_evaluation.py \
+python scripts/02_run_evaluation.py \
   --assets_dir data/EHRSHOT_ASSETS \
-  --features results/gen2/trajgpt/embeddings/trajgpt_features.pkl \
+  --features results/trajgpt/embeddings/trajgpt_features.pkl \
   --model_name trajgpt \
-  --output_dir results/gen2/trajgpt
+  --output_dir results/trajgpt
 ```
 
-### 5) CLMBR vs TrajGPT comparison
+Output: `results/trajgpt/summary.csv`
+
+### Step 5: Compare models
 
 ```bash
-./.venv39/bin/python scripts/05_compare_models.py --results-dir results/gen2
+python scripts/05_compare_models.py --results-dir results/
 ```
 
-Outputs under:
+## Project Structure
 
-```text
-results/gen2/comparison
+```
+ehrshot-trajgpt/
+  configs/
+    trajgpt_ehrshot.yaml        # TrajGPT hyperparameters + data paths
+  ehrshot/                      # Shared utilities
+    tasks.py                    # 15 EHRSHOT task definitions
+    data_loading.py             # MEDS parquet loading
+    evaluation.py               # k-shot LR, AUROC/AUPRC, bootstrap CIs
+  models/
+    embedder.py                 # PatientEmbedder ABC + CLMBRBaseEmbedder
+    trajgpt_embedder.py         # TrajGPTEmbedder (loads checkpoint, extracts embeddings)
+    trajgpt/
+      model.py                  # TrajGPT model (8 SRA blocks, 200-dim)
+      sra.py                    # Selective Recurrent Attention (parallel + recurrent)
+      xpos.py                   # XPOS position encoding for irregular timestamps
+      tokenizer.py              # EHR code tokenizer
+      heads.py                  # Pretrain (next-code) + classification heads
+  scripts/
+    01_extract_embeddings.py    # (Optional) CLMBR embedding extraction from HuggingFace
+    02_run_evaluation.py        # Few-shot LR evaluation (works for both models)
+    03_pretrain_trajgpt.py      # TrajGPT pretraining
+    04_extract_trajgpt_embeddings.py  # TrajGPT embedding extraction
+    05_compare_models.py        # Side-by-side comparison
+  data/                         # EHRSHOT_ASSETS + EHRSHOT_MEDS (not in repo)
+  results/                      # Outputs (not in repo)
 ```
 
-## Notes
+## Model Comparison
 
-- `scripts/04_extract_trajgpt_embeddings.py` already sets `KMP_DUPLICATE_LIB_OK=TRUE` internally.
-- On macOS, the evaluation command above with `OMP_NUM_THREADS=1` and `MKL_NUM_THREADS=1` is the most stable option.
-- The current TrajGPT code path is strict repo/paper-aligned; older TrajGPT checkpoints from prior code variants are not load-compatible and must be retrained.
+|                  | CLMBR-T-base              | TrajGPT                           |
+| ---------------- | ------------------------- | --------------------------------- |
+| Parameters       | 141M                      | ~11M                              |
+| Attention        | Standard softmax O(N^2)   | Selective Recurrent O(N)          |
+| Time encoding    | Standard positional       | XPOS with real timestamps         |
+| Temporal decay   | None                      | Data-dependent (learned per head) |
+| Embedding dim    | 768                       | 200                               |
+| Pretraining data | 2.57M patients (Stanford) | 6,739 patients (EHRSHOT)          |
+
+## Troubleshooting
+
+**OpenMP crash on macOS:** If you see `Initializing libiomp5.dylib, but found libomp.dylib already initialized`, prefix your command with:
+
+```bash
+KMP_DUPLICATE_LIB_OK=TRUE OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python scripts/...
+```
+
+The extraction script sets `KMP_DUPLICATE_LIB_OK` automatically.
+
+## References
+
+- [EHRSHOT: An EHR Benchmark for Few-Shot Evaluation of Foundation Models](https://arxiv.org/abs/2307.02028) (Wornow et al., NeurIPS 2023)
+- [TrajGPT: Irregular Time-Series Representation Learning for Health Prediction](https://github.com/li-lab-mcgill/TrajGPT) (Song et al., IEEE JBHI 2025)
+- [CLMBR-T-base on HuggingFace](https://huggingface.co/StanfordShahLab/clmbr-t-base)

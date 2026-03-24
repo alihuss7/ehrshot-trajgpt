@@ -41,7 +41,7 @@ class TrajGPTEmbedder(PatientEmbedder):
             d_model=self._d_model,
             qk_dim=config.get("qk_dim", config.get("d_model", 200)),
             v_dim=config.get("v_dim", 400),
-            ff_dim=config.get("ff_dim", 800),
+            ff_dim=config.get("ffn_proj_size", config.get("ff_dim", 800)),
             num_layers=config.get("num_layers", 8),
             num_heads=config.get("num_heads", 4),
             tau=config.get("tau", 20.0),
@@ -63,7 +63,7 @@ class TrajGPTEmbedder(PatientEmbedder):
             self.model.load_state_dict(checkpoint["model_state_dict"])
         except RuntimeError as e:
             raise RuntimeError(
-                "Checkpoint architecture mismatch with strict TrajGPT mode. "
+                "Checkpoint architecture mismatch with current TrajGPT mode. "
                 "This checkpoint was trained with an older model variant. "
                 "Rerun `scripts/03_pretrain_trajgpt.py` using the updated "
                 "`configs/trajgpt_ehrshot.yaml`, then extract embeddings."

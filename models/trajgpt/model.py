@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """TrajGPT core model for EHRSHOT adaptation.
 
-This implementation follows the official TrajGPT repo block structure:
+This implementation uses the TrajGPT block structure:
 - token embedding + learnable SOS
 - stacked SRA blocks
 - final layer norm
@@ -25,6 +25,7 @@ class TrajGPT(nn.Module):
         qk_dim: int = 200,
         v_dim: int = 400,
         ff_dim: int = 800,
+        ffn_proj_size: int | None = None,
         num_layers: int = 8,
         num_heads: int = 4,
         tau: float = 20.0,
@@ -33,6 +34,13 @@ class TrajGPT(nn.Module):
         pad_id: int = 0,
         sos_id: int = 1,
         forecast_method: str = "time_specific",
+        use_bias_in_sra: bool = False,
+        use_bias_in_mlp: bool = True,
+        use_bias_in_sra_out: bool = False,
+        use_default_gamma: bool = False,
+        output_retentions: bool = False,
+        use_cache: bool = True,
+        forward_impl: str = "parallel",
     ):
         super().__init__()
 
@@ -47,10 +55,15 @@ class TrajGPT(nn.Module):
         self.sos_id = sos_id
         self.max_seq_len = max_seq_len
         self.forecast_method = forecast_method
+        self.output_retentions = output_retentions
+        self.use_cache = use_cache
+        self.forward_impl = forward_impl
+        if ffn_proj_size is not None:
+            ff_dim = int(ffn_proj_size)
 
         self.token_embedding = nn.Embedding(vocab_size, d_model, padding_idx=pad_id)
 
-        # Official repo uses learnable SOS embedding parameter.
+        # Learnable SOS embedding parameter.
         self.sos = nn.Parameter(torch.zeros(d_model))
         nn.init.normal_(self.sos)
 
@@ -64,6 +77,10 @@ class TrajGPT(nn.Module):
                     num_heads=num_heads,
                     tau=tau,
                     dropout=dropout,
+                    use_bias_in_sra=use_bias_in_sra,
+                    use_bias_in_mlp=use_bias_in_mlp,
+                    use_bias_in_sra_out=use_bias_in_sra_out,
+                    use_default_gamma=use_default_gamma,
                 )
                 for _ in range(num_layers)
             ]
@@ -90,8 +107,10 @@ class TrajGPT(nn.Module):
         self,
         token_ids: torch.Tensor,
         timestamps: torch.Tensor,
-        forward_impl: str = "parallel",
+        forward_impl: str | None = None,
     ) -> torch.Tensor:
+        if forward_impl is None:
+            forward_impl = self.forward_impl
         X = self.token_embedding(token_ids)
 
         for layer in self.layers:
@@ -105,8 +124,10 @@ class TrajGPT(nn.Module):
         token_ids: torch.Tensor,
         timestamps: torch.Tensor,
         pretrain_head: PretrainHead,
-        forward_impl: str = "parallel",
+        forward_impl: str | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        if forward_impl is None:
+            forward_impl = self.forward_impl
         B, N = token_ids.shape
 
         token_emb = self.token_embedding(token_ids[:, :-1])
@@ -129,9 +150,11 @@ class TrajGPT(nn.Module):
         token_ids: torch.Tensor,
         timestamps: torch.Tensor,
         mask: torch.Tensor | None = None,
-        forward_impl: str = "parallel",
+        forward_impl: str | None = None,
     ) -> torch.Tensor:
         """Return time-specific (last valid step) hidden-state representation."""
+        if forward_impl is None:
+            forward_impl = self.forward_impl
         hidden_states = self.forward(token_ids, timestamps, forward_impl)
 
         if mask is not None:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Selective Recurrent Attention aligned to official TrajGPT repo behavior."""
+"""Selective Recurrent Attention module for TrajGPT."""
 
 import torch
 import torch.nn as nn
@@ -17,8 +17,12 @@ class SelectiveRecurrentAttention(nn.Module):
         num_heads: int,
         tau: float = 20.0,
         dropout: float = 0.0,
+        use_bias_in_sra: bool = False,
+        use_bias_in_sra_out: bool = False,
+        use_default_gamma: bool = False,
     ):
         super().__init__()
+        _ = dropout
         if qk_dim % num_heads != 0:
             raise ValueError(f"qk_dim={qk_dim} must be divisible by num_heads={num_heads}")
         if v_dim % num_heads != 0:
@@ -33,19 +37,21 @@ class SelectiveRecurrentAttention(nn.Module):
         self.head_qk_dim = qk_dim // num_heads
         self.head_v_dim = v_dim // num_heads
 
-        # Official repo defaults:
-        # use_bias_in_sra=False, use_bias_in_sra_out=False, gamma_proj bias=True.
-        self.qkv = nn.Linear(d_model, qk_dim * 2 + v_dim, bias=False)
+        self.qkv = nn.Linear(d_model, qk_dim * 2 + v_dim, bias=use_bias_in_sra)
         self.gamma_proj = nn.Linear(d_model, num_heads, bias=True)
         self.silu = nn.SiLU()
         self.gated = nn.Linear(d_model, v_dim, bias=False)
-        self.out_proj = nn.Linear(v_dim, d_model, bias=False)
+        self.out_proj = nn.Linear(v_dim, d_model, bias=use_bias_in_sra_out)
 
         self.gn = nn.GroupNorm(num_groups=num_heads, num_channels=v_dim, affine=False)
-        # Official repo applies XPOS before splitting heads, dimension=qk_dim.
+        # Apply XPOS before splitting heads, dimension=qk_dim.
         self.xpos = XPOS(qk_dim)
-        # Repo keeps a fixed gamma schedule parameter, although active path is data-dependent gamma.
-        gamma = 1 - 2 ** (-5 - torch.arange(0, num_heads, dtype=torch.float32))
+        if use_default_gamma:
+            gamma = 1 - 2 ** (-5 - torch.arange(0, num_heads, dtype=torch.float32))
+        else:
+            s = torch.log(torch.tensor(1 / 64, dtype=torch.float32))
+            e = torch.log(torch.tensor(1 / 512, dtype=torch.float32))
+            gamma = 1 - torch.exp(torch.linspace(s, e, num_heads))
         self.decay = nn.Parameter(gamma, requires_grad=False)
 
     def _split_heads(
@@ -147,26 +153,18 @@ class SelectiveRecurrentAttention(nn.Module):
             decay_mask = self.get_parallel_decay_mask(t=t, decay=decay, retention_mask=retention_mask)
             retention_out, curr_kv, retention_weights = self.parallel_retention(q, k, v, decay_mask)
         elif forward_impl == "recurrent":
-            state = past_key_value
-            outputs = []
+            retention_weights = None
             for n in range(T):
-                q_n = q[:, :, n : n + 1, :]
-                k_n = k[:, :, n : n + 1, :]
-                v_n = v[:, :, n : n + 1, :]
                 gamma_n = decay[:, n, :]
                 retention_mask_n = retention_mask[:, n] if retention_mask is not None else None
-                out_n, state = self.recurrent_retention(
-                    q_n,
-                    k_n,
-                    v_n,
-                    past_key_value=state,
+                retention_out, curr_kv = self.recurrent_retention(
+                    q,
+                    k,
+                    v,
+                    past_key_value=past_key_value,
                     decay=gamma_n,
                     retention_mask=retention_mask_n,
                 )
-                outputs.append(out_n)
-            retention_out = torch.cat(outputs, dim=2)
-            curr_kv = state
-            retention_weights = None
         else:
             raise ValueError(f"Unknown forward_impl: {forward_impl}")
 
@@ -192,9 +190,13 @@ class SRABlock(nn.Module):
         num_heads: int,
         tau: float = 20.0,
         dropout: float = 0.0,
+        use_bias_in_sra: bool = False,
+        use_bias_in_mlp: bool = True,
+        use_bias_in_sra_out: bool = False,
+        use_default_gamma: bool = False,
     ):
         super().__init__()
-        _ = dropout  # kept for API compatibility; official FFN block has no dropout.
+        _ = dropout  # kept for API compatibility; FFN block has no dropout.
 
         self.norm1 = nn.LayerNorm(d_model)
         self.sra = SelectiveRecurrentAttention(
@@ -204,12 +206,15 @@ class SRABlock(nn.Module):
             num_heads=num_heads,
             tau=tau,
             dropout=0.0,
+            use_bias_in_sra=use_bias_in_sra,
+            use_bias_in_sra_out=use_bias_in_sra_out,
+            use_default_gamma=use_default_gamma,
         )
         self.norm2 = nn.LayerNorm(d_model)
         self.mlp = nn.Sequential(
-            nn.Linear(d_model, ff_dim, bias=True),
+            nn.Linear(d_model, ff_dim, bias=use_bias_in_mlp),
             nn.GELU(),
-            nn.Linear(ff_dim, d_model, bias=True),
+            nn.Linear(ff_dim, d_model, bias=use_bias_in_mlp),
         )
 
     def forward(

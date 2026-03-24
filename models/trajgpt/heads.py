@@ -3,6 +3,7 @@ from __future__ import annotations
 """Output heads for TrajGPT.
 
 - PretrainHead: Next-token prediction (cross-entropy loss)
+- ForecastHead: Autoregressive/forecast token prediction head
 - ClfHead: Classification with average pooling
 """
 
@@ -20,7 +21,7 @@ class PretrainHead(nn.Module):
 
     def __init__(self, d_model: int, vocab_size: int, pad_id: int = 0):
         super().__init__()
-        # +1 for padding token output (matches official implementation)
+        # +1 to include padding token output
         self.proj = nn.Linear(d_model, vocab_size + 1)
         self.pad_id = pad_id
 
@@ -48,15 +49,25 @@ class PretrainHead(nn.Module):
         return loss, logits
 
 
+class ForecastHead(nn.Module):
+    """Forecasting head."""
+
+    def __init__(self, d_model: int, vocab_size: int):
+        super().__init__()
+        self.proj = nn.Linear(d_model, vocab_size + 1)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        return self.proj(hidden_states)
+
+
 class ClfHead(nn.Module):
     """Classification head with average pooling.
 
     Pools sequence representations and projects to class logits.
     """
 
-    def __init__(self, d_model: int, num_classes: int, dropout: float = 0.1):
+    def __init__(self, d_model: int, num_classes: int):
         super().__init__()
-        self.dropout = nn.Dropout(dropout)
         self.proj = nn.Linear(d_model, num_classes)
 
     def forward(
@@ -79,5 +90,4 @@ class ClfHead(nn.Module):
         else:
             pooled = hidden_states.mean(dim=1)
 
-        pooled = self.dropout(pooled)
         return self.proj(pooled)

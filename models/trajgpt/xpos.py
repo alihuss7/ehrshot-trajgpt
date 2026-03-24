@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""XPOS module aligned with the official TrajGPT repo implementation."""
+"""XPOS module for TrajGPT."""
 
 import torch
 import torch.nn as nn
@@ -43,7 +43,7 @@ def apply_rotary_pos_emb(
 
 
 class XPOS(nn.Module):
-    """Official TrajGPT XPOS behavior (offset-based, asymmetric Q/K scaling)."""
+    """XPOS with offset-based, asymmetric Q/K scaling."""
 
     def __init__(self, head_dim: int, scale_base: int = 512):
         super().__init__()

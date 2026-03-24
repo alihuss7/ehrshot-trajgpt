@@ -1,4 +1,6 @@
 """TrajGPT: Irregular Time-Series Representation Learning for Health Trajectory."""
+from models.trajgpt.config import TrajGPTConfig
+from models.trajgpt.heads import ClfHead, ForecastHead, PretrainHead
 from models.trajgpt.model import TrajGPT
 from models.trajgpt.sra import SelectiveRecurrentAttention, SRABlock
 from models.trajgpt.xpos import XPOS

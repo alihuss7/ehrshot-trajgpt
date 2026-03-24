@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Pretrain TrajGPT on EHRSHOT data (strict TrajGPT-style setup).
+"""Pretrain TrajGPT on EHRSHOT data.
 
-Strict mode choices:
+Configuration choices:
 - One sequence per patient (tail-truncated to max_seq_len)
 - Code-token vocabulary only
 - Warmup + linear decay scheduler
-- Official EHRSHOT train/val/test split usage
+- EHRSHOT train/val/test split usage
 """
 
 from __future__ import annotations
@@ -19,18 +19,18 @@ from pathlib import Path
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Dataset
-import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ehrshot.data_loading import build_patient_sequences, load_meds_dataset
+from models.trajgpt.config import TrajGPTConfig
 from models.trajgpt.heads import PretrainHead
 from models.trajgpt.model import TrajGPT
 from models.trajgpt.tokenizer import EHRTokenizer
 
 
 class EHRPretrainDataset(Dataset):
-    """One sequence sample per patient (repo-style)."""
+    """One sequence sample per patient."""
 
     def __init__(
         self,
@@ -49,7 +49,7 @@ class EHRPretrainDataset(Dataset):
 
             token_ids = tokenizer.encode(codes)
 
-            # Tail-truncate to max_seq_len (repo-style)
+            # Tail-truncate to max_seq_len
             if len(token_ids) > max_seq_len:
                 token_ids = token_ids[-max_seq_len:]
                 times = times[-max_seq_len:]
@@ -110,10 +110,10 @@ def resolve_device(device_cfg: str) -> str:
     return "cpu"
 
 
-def load_official_splits(assets_dir: str) -> tuple[set[int], set[int], set[int]]:
+def load_ehrshot_splits(assets_dir: str) -> tuple[set[int], set[int], set[int]]:
     split_path = Path(assets_dir) / "splits" / "person_id_map.csv"
     if not split_path.exists():
-        raise FileNotFoundError(f"Official split file not found: {split_path}")
+        raise FileNotFoundError(f"EHRSHOT split file not found: {split_path}")
 
     split_df = pd.read_csv(split_path)
     required_cols = {"split", "omop_person_id"}
@@ -153,8 +153,8 @@ def main():
     parser.add_argument("--config", type=str, required=True)
     args = parser.parse_args()
 
-    with open(args.config) as f:
-        config = yaml.safe_load(f)
+    cfg = TrajGPTConfig.load_yaml(args.config)
+    config = cfg.to_dict()
 
     device = resolve_device(config.get("device", "auto"))
 
@@ -179,9 +179,9 @@ def main():
 
     assets_dir = config.get("assets_dir")
     if not assets_dir:
-        raise ValueError("Missing `assets_dir` in config; required for official EHRSHOT splits")
+        raise ValueError("Missing `assets_dir` in config; required for EHRSHOT splits")
 
-    train_ids, val_ids, test_ids = load_official_splits(assets_dir)
+    train_ids, val_ids, test_ids = load_ehrshot_splits(assets_dir)
     available_ids = set(patient_data.keys())
     train_ids = train_ids & available_ids
     val_ids = val_ids & available_ids
@@ -191,7 +191,7 @@ def main():
     val_data = {k: v for k, v in patient_data.items() if k in val_ids}
 
     print(
-        f"  Official splits: Train={len(train_data)} patients, "
+        f"  EHRSHOT splits: Train={len(train_data)} patients, "
         f"Val={len(val_data)} patients, Test={len(test_ids)} patients"
     )
 
@@ -221,7 +221,7 @@ def main():
         d_model=int(config.get("d_model", 200)),
         qk_dim=int(config.get("qk_dim", config.get("d_model", 200))),
         v_dim=int(config.get("v_dim", 400)),
-        ff_dim=int(config.get("ff_dim", 800)),
+        ff_dim=int(config.get("ffn_proj_size", config.get("ff_dim", 800))),
         num_layers=int(config.get("num_layers", 8)),
         num_heads=int(config.get("num_heads", 4)),
         tau=float(config.get("tau", 20.0)),
@@ -230,6 +230,13 @@ def main():
         pad_id=tokenizer.pad_id,
         sos_id=tokenizer.sos_id,
         forecast_method=str(config.get("forecast_method", "time_specific")),
+        use_bias_in_sra=bool(config.get("use_bias_in_sra", False)),
+        use_bias_in_mlp=bool(config.get("use_bias_in_mlp", True)),
+        use_bias_in_sra_out=bool(config.get("use_bias_in_sra_out", False)),
+        use_default_gamma=bool(config.get("use_default_gamma", False)),
+        output_retentions=bool(config.get("output_retentions", False)),
+        use_cache=bool(config.get("use_cache", True)),
+        forward_impl=str(config.get("forward_impl", "parallel")),
     ).to(device)
 
     pretrain_head = PretrainHead(
