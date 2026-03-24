@@ -1,0 +1,44 @@
+model_name: trajgpt
+num_layers: 8
+num_heads: 4
+d_model: 200
+v_dim: 400
+ff_dim: 800
+dropout: 0.1
+max_seq_len: 256
+tau: 20
+meds_data_dir: data/EHRSHOT_MEDS/data
+labels_dir: data/EHRSHOT_MEDS/labels
+assets_dir: data/EHRSHOT_ASSETS
+pretrain_epochs: 20
+pretrain_lr: 3.0e-05
+pretrain_batch_size: 32
+weight_decay: 0.01
+warmup_steps: 500
+gradient_accumulation_steps: 1
+forward_impl: parallel
+device: cpu
+checkpoint_dir: results/trajgpt/checkpoints
+embedding_output_dir: results/trajgpt/embeddings
+embedding_batch_size: 64
+k_shots:
+- 1
+- 2
+- 4
+- 8
+- 16
+- 32
+- 64
+- 128
+n_runs: 5
+seeds:
+- 42
+- 123
+- 456
+- 789
+- 1011
+metrics:
+- auroc
+- auprc
+tasks: all
+results_dir: results/trajgpt

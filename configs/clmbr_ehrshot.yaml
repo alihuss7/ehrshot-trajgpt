@@ -1,0 +1,27 @@
+# CLMBR-T-base evaluation on EHRSHOT
+# Usage: python scripts/01_extract_embeddings.py --config configs/clmbr_ehrshot.yaml
+
+# Model
+model_name: "clmbr-t-base"
+model_hub_id: "StanfordShahLab/clmbr-t-base"
+
+# Data paths (adjust after extracting EHRSHOT_MEDS.zip)
+meds_data_dir: "data/ehrshot_meds/data"
+labels_dir: "data/ehrshot_meds/label"
+
+# Embedding extraction
+embedding_output_dir: "results/clmbr-t-base/embeddings"
+batch_size: 64
+device: "mps"  # "cuda", "cpu", or "mps" (Apple Silicon)
+
+# Evaluation
+k_shots: [1, 2, 4, 8, 16, 32, 64, 128]
+n_runs: 5
+seeds: [42, 123, 456, 789, 1011]
+metrics: ["auroc", "auprc"]
+
+# Tasks: "all" or list of task names
+tasks: "all"
+
+# Output
+results_dir: "results/clmbr-t-base"

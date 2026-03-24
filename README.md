@@ -1,37 +1,101 @@
 # ehrshot-trajgpt
 
-Comparing **TrajGPT** against **CLMBR-T-base** on the EHRSHOT benchmark for clinical prediction tasks.
+Comparing **TrajGPT** against **CLMBR-T-base** on the EHRSHOT benchmark.
 
-## Project Goals
-1. Reproduce CLMBR-T-base baseline results on EHRSHOT benchmark tasks
-2. Implement TrajGPT and train it on EHRSHOT
-3. Compare both models on tasks from the EHRSHOT paper:
-   - Predicting new diagnoses
-   - Anticipating lab results
-   - Operational outcomes (readmission, ICU transfer, length of stay)
+## Data Prerequisites
+Expected local folders:
 
-## Structure
-```
-ehrshot-trajgpt/
-├── data/               # EHR data (not committed - DUA restricted)
-├── models/             # Model definitions and checkpoints
-├── notebooks/          # Exploration and analysis notebooks
-├── scripts/            # Training and evaluation scripts
-├── results/            # Evaluation outputs and plots
-└── configs/            # Hyperparameter and experiment configs
+```text
+data/EHRSHOT_ASSETS
+data/EHRSHOT_MEDS
 ```
 
-## Setup
+These come from the EHRSHOT release (DUA-restricted).
+
+## Environment (working setup used)
+
 ```bash
-conda create -n ehrshot python=3.10
-conda activate ehrshot
+python3 -m venv .venv39
+source .venv39/bin/activate
 pip install -r requirements.txt
+pip install torch==2.1.2 pandas pyarrow scikit-learn scipy tqdm pyyaml "numpy<2"
 ```
 
-## Models
-- **CLMBR-T-base**: 141M parameter clinical foundation model from Stanford Shah Lab
-- **TrajGPT**: Trajectory-based GPT model trained on EHRSHOT
+## Canonical Config
 
-## Data
-Data sourced from [EHRSHOT on Redivis](http://ehrshot.stanford.edu). Access requires DUA approval.
-Data must remain on encrypted local machine per the EHRSHOT Data Set License 1.0.
+Use:
+
+```text
+configs/trajgpt_ehrshot.yaml
+```
+
+## Commands We Used
+
+### 1) CLMBR-T-base baseline (from precomputed EHRSHOT_ASSETS features)
+
+```bash
+./.venv39/bin/python scripts/02_run_evaluation.py \
+  --assets_dir data/EHRSHOT_ASSETS \
+  --model_name clmbr-t-base \
+  --output_dir results/clmbr-t-base
+```
+
+This uses `data/EHRSHOT_ASSETS/features/clmbr_features.pkl` by default.
+
+Optional/legacy: `scripts/01_extract_embeddings.py` exists for regenerating
+CLMBR embeddings from scratch, but it is not used in the canonical pipeline
+documented here.
+
+### 2) TrajGPT pretraining
+
+```bash
+./.venv39/bin/python scripts/03_pretrain_trajgpt.py \
+  --config configs/trajgpt_ehrshot.yaml
+```
+
+Outputs checkpoints under:
+
+```text
+results/trajgpt/checkpoints
+```
+
+### 3) TrajGPT embedding extraction (CLMBR-compatible pickle output)
+
+```bash
+./.venv39/bin/python scripts/04_extract_trajgpt_embeddings.py \
+  --config configs/trajgpt_ehrshot.yaml
+```
+
+Output:
+
+```text
+results/trajgpt/embeddings/trajgpt_features.pkl
+```
+
+### 4) TrajGPT evaluation on EHRSHOT tasks
+
+```bash
+KMP_DUPLICATE_LIB_OK=TRUE OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+./.venv39/bin/python scripts/02_run_evaluation.py \
+  --assets_dir data/EHRSHOT_ASSETS \
+  --features results/trajgpt/embeddings/trajgpt_features.pkl \
+  --model_name trajgpt \
+  --output_dir results/trajgpt
+```
+
+### 5) CLMBR vs TrajGPT comparison
+
+```bash
+./.venv39/bin/python scripts/05_compare_models.py --results-dir results
+```
+
+Outputs under:
+
+```text
+results/comparison
+```
+
+## Notes
+
+- `scripts/04_extract_trajgpt_embeddings.py` already sets `KMP_DUPLICATE_LIB_OK=TRUE` internally.
+- On macOS, the evaluation command above with `OMP_NUM_THREADS=1` and `MKL_NUM_THREADS=1` is the most stable option.
