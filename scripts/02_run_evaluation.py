@@ -18,6 +18,7 @@ import argparse
 import json
 import sys
 import warnings
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -280,6 +281,20 @@ def main():
         output_dir.mkdir(parents=True, exist_ok=True)
         summary_path = output_dir / "summary.csv"
         summary_df.to_csv(summary_path, index=False)
+
+        manifest = {
+            "timestamp": datetime.now().isoformat(),
+            "model_name": args.model_name,
+            "assets_dir": str(assets_dir),
+            "features_path": str(features_path),
+            "tasks": tasks,
+            "k_shots": args.k_shots if args.k_shots else "all",
+            "summary_path": str(summary_path),
+            "n_rows": int(len(summary_df)),
+        }
+        with open(output_dir / "evaluation_manifest.json", "w") as f:
+            json.dump(manifest, f, indent=2)
+
         print(f"\nSummary saved to {summary_path}")
         print(f"\n{'='*60}")
         print("Best AUROC per task:")

@@ -2,6 +2,12 @@
 
 Comparing **TrajGPT** against **CLMBR-T-base** on the EHRSHOT benchmark.
 
+Track model changes and result snapshots in:
+
+```text
+MODEL_ACTIVITY.md
+```
+
 ## Data Prerequisites
 Expected local folders:
 
@@ -37,7 +43,7 @@ configs/trajgpt_ehrshot.yaml
 ./.venv39/bin/python scripts/02_run_evaluation.py \
   --assets_dir data/EHRSHOT_ASSETS \
   --model_name clmbr-t-base \
-  --output_dir results/clmbr-t-base
+  --output_dir results/gen2/clmbr-t-base
 ```
 
 This uses `data/EHRSHOT_ASSETS/features/clmbr_features.pkl` by default.
@@ -56,7 +62,7 @@ documented here.
 Outputs checkpoints under:
 
 ```text
-results/trajgpt/checkpoints
+results/gen2/trajgpt/checkpoints
 ```
 
 ### 3) TrajGPT embedding extraction (CLMBR-compatible pickle output)
@@ -69,7 +75,7 @@ results/trajgpt/checkpoints
 Output:
 
 ```text
-results/trajgpt/embeddings/trajgpt_features.pkl
+results/gen2/trajgpt/embeddings/trajgpt_features.pkl
 ```
 
 ### 4) TrajGPT evaluation on EHRSHOT tasks
@@ -78,24 +84,25 @@ results/trajgpt/embeddings/trajgpt_features.pkl
 KMP_DUPLICATE_LIB_OK=TRUE OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
 ./.venv39/bin/python scripts/02_run_evaluation.py \
   --assets_dir data/EHRSHOT_ASSETS \
-  --features results/trajgpt/embeddings/trajgpt_features.pkl \
+  --features results/gen2/trajgpt/embeddings/trajgpt_features.pkl \
   --model_name trajgpt \
-  --output_dir results/trajgpt
+  --output_dir results/gen2/trajgpt
 ```
 
 ### 5) CLMBR vs TrajGPT comparison
 
 ```bash
-./.venv39/bin/python scripts/05_compare_models.py --results-dir results
+./.venv39/bin/python scripts/05_compare_models.py --results-dir results/gen2
 ```
 
 Outputs under:
 
 ```text
-results/comparison
+results/gen2/comparison
 ```
 
 ## Notes
 
 - `scripts/04_extract_trajgpt_embeddings.py` already sets `KMP_DUPLICATE_LIB_OK=TRUE` internally.
 - On macOS, the evaluation command above with `OMP_NUM_THREADS=1` and `MKL_NUM_THREADS=1` is the most stable option.
+- The current TrajGPT code path is strict repo/paper-aligned; older TrajGPT checkpoints from prior code variants are not load-compatible and must be retrained.

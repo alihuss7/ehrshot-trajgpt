@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-"""Medical code tokenizer for EHRSHOT data.
+"""Medical code tokenizer for TrajGPT-on-EHRSHOT.
 
-Builds a vocabulary from OMOP concept codes in the MEDS dataset
-and maps them to integer token IDs.
+Strict mode: plain code-token vocabulary only (no extra composed features),
+matching the simple tokenization style used in the official TrajGPT repo.
 """
 
 import json
-from pathlib import Path
 from collections import Counter
+from pathlib import Path
 
 import pandas as pd
 
@@ -28,10 +28,6 @@ class EHRTokenizer:
     """Tokenizer for structured EHR codes."""
 
     def __init__(self, vocab: dict[str, int] | None = None):
-        """
-        Args:
-            vocab: Optional pre-built vocabulary mapping code -> token_id.
-        """
         if vocab is not None:
             self.vocab = vocab
         else:
@@ -67,29 +63,27 @@ class EHRTokenizer:
         cls,
         meds_df: pd.DataFrame,
         min_count: int = 1,
+        max_vocab_size: int | None = None,
     ) -> "EHRTokenizer":
-        """Build vocabulary from MEDS DataFrame.
-
-        Args:
-            meds_df: MEDS DataFrame with a 'code' column.
-            min_count: Minimum occurrence count to include a code.
-
-        Returns:
-            EHRTokenizer with built vocabulary.
-        """
-        code_counts = Counter(meds_df["code"].dropna().tolist())
+        """Build vocabulary from MEDS DataFrame code column."""
+        code_counts = Counter(meds_df["code"].dropna().astype(str).tolist())
 
         vocab = {tok: i for i, tok in enumerate(SPECIAL_TOKENS)}
         idx = len(SPECIAL_TOKENS)
 
-        for code, count in sorted(code_counts.items()):
+        sorted_codes = sorted(code_counts.items(), key=lambda x: (-x[1], x[0]))
+        for code, count in sorted_codes:
             if count >= min_count:
                 vocab[code] = idx
                 idx += 1
+                if max_vocab_size is not None and (idx - len(SPECIAL_TOKENS)) >= max_vocab_size:
+                    break
 
-        print(f"Built vocabulary: {len(vocab)} tokens "
-              f"({len(vocab) - len(SPECIAL_TOKENS)} medical codes + "
-              f"{len(SPECIAL_TOKENS)} special tokens)")
+        print(
+            f"Built vocabulary: {len(vocab)} tokens "
+            f"({len(vocab) - len(SPECIAL_TOKENS)} medical codes + "
+            f"{len(SPECIAL_TOKENS)} special tokens)"
+        )
 
         return cls(vocab=vocab)
 
@@ -104,5 +98,10 @@ class EHRTokenizer:
     def load(cls, path: str | Path) -> "EHRTokenizer":
         """Load vocabulary from JSON file."""
         with open(path) as f:
-            vocab = json.load(f)
-        return cls(vocab=vocab)
+            payload = json.load(f)
+
+        # Backward compatibility with newer payload format.
+        if isinstance(payload, dict) and "vocab" in payload:
+            return cls(vocab=payload["vocab"])
+
+        return cls(vocab=payload)

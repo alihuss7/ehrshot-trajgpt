@@ -1,30 +1,22 @@
 from __future__ import annotations
 
-"""TrajGPT: Trajectory Generative Pre-trained Transformer.
+"""TrajGPT core model for EHRSHOT adaptation.
 
-Full model implementation following the paper architecture (Table V):
-- 8 decoder (SRA) layers
-- 4 attention heads
-- Q/K dim: 200, V dim: 400, FF dim: 400
-- ~7.5M parameters
-- Token embedding + [SOS] prepending
-- L × SRA_Block
-- Final LayerNorm
-- Output head (pretrain or classification)
-
-Reference: Song et al., "TrajGPT: Irregular Time-Series Representation
-Learning of Health Trajectory", IEEE JBHI 2025.
+This implementation follows the official TrajGPT repo block structure:
+- token embedding + learnable SOS
+- stacked SRA blocks
+- final layer norm
 """
 
 import torch
 import torch.nn as nn
 
+from models.trajgpt.heads import PretrainHead
 from models.trajgpt.sra import SRABlock
-from models.trajgpt.heads import PretrainHead, ClfHead
 
 
 class TrajGPT(nn.Module):
-    """TrajGPT model for irregularly-sampled EHR time series."""
+    """TrajGPT model for irregularly sampled EHR trajectories."""
 
     def __init__(
         self,
@@ -32,61 +24,53 @@ class TrajGPT(nn.Module):
         d_model: int = 200,
         qk_dim: int = 200,
         v_dim: int = 400,
-        ff_dim: int = 400,
+        ff_dim: int = 800,
         num_layers: int = 8,
         num_heads: int = 4,
         tau: float = 20.0,
-        dropout: float = 0.1,
+        dropout: float = 0.0,
         max_seq_len: int = 256,
         pad_id: int = 0,
         sos_id: int = 1,
+        forecast_method: str = "time_specific",
     ):
-        """
-        Args:
-            vocab_size: Number of tokens in the vocabulary.
-            d_model: Model hidden dimension (also Q/K dim).
-            qk_dim: Query/Key projection dimension.
-            v_dim: Value projection dimension.
-            ff_dim: Feed-forward hidden dimension.
-            num_layers: Number of SRA blocks.
-            num_heads: Number of attention heads.
-            tau: Temperature for data-dependent decay.
-            dropout: Dropout rate.
-            max_seq_len: Maximum sequence length.
-            pad_id: Padding token ID.
-            sos_id: Start-of-sequence token ID.
-        """
         super().__init__()
+
+        if forecast_method not in {"time_specific", "auto_regressive"}:
+            raise ValueError(
+                f"Invalid forecast_method={forecast_method}. "
+                "Expected one of {'time_specific', 'auto_regressive'}."
+            )
+
         self.d_model = d_model
         self.pad_id = pad_id
         self.sos_id = sos_id
         self.max_seq_len = max_seq_len
+        self.forecast_method = forecast_method
 
-        # Token embedding
         self.token_embedding = nn.Embedding(vocab_size, d_model, padding_idx=pad_id)
 
-        # Learnable SOS token (matches official: nn.Parameter + normal init)
+        # Official repo uses learnable SOS embedding parameter.
         self.sos = nn.Parameter(torch.zeros(d_model))
         nn.init.normal_(self.sos)
 
-        # SRA blocks
-        self.layers = nn.ModuleList([
-            SRABlock(
-                d_model=d_model,
-                qk_dim=qk_dim,
-                v_dim=v_dim,
-                ff_dim=ff_dim,
-                num_heads=num_heads,
-                tau=tau,
-                dropout=dropout,
-            )
-            for _ in range(num_layers)
-        ])
+        self.layers = nn.ModuleList(
+            [
+                SRABlock(
+                    d_model=d_model,
+                    qk_dim=qk_dim,
+                    v_dim=v_dim,
+                    ff_dim=ff_dim,
+                    num_heads=num_heads,
+                    tau=tau,
+                    dropout=dropout,
+                )
+                for _ in range(num_layers)
+            ]
+        )
 
-        # Final layer norm
         self.final_norm = nn.LayerNorm(d_model)
 
-        # Initialize weights
         self.apply(self._init_weights)
 
     def _init_weights(self, module):
@@ -108,27 +92,13 @@ class TrajGPT(nn.Module):
         timestamps: torch.Tensor,
         forward_impl: str = "parallel",
     ) -> torch.Tensor:
-        """Forward pass through the TrajGPT encoder.
+        X = self.token_embedding(token_ids)
 
-        Args:
-            token_ids: Input token IDs (batch, seq_len).
-            timestamps: Timestamps in days (batch, seq_len).
-            forward_impl: "parallel" for training, "recurrent" for inference.
-
-        Returns:
-            Hidden states (batch, seq_len, d_model).
-        """
-        # Token embedding
-        X = self.token_embedding(token_ids)  # (B, N, d_model)
-
-        # Pass through SRA blocks
         for layer in self.layers:
-            X = layer(X, timestamps, forward_impl)
+            layer_out = layer(X, timestamps, forward_impl=forward_impl)
+            X = layer_out[0] if isinstance(layer_out, tuple) else layer_out
 
-        # Final normalization
-        X = self.final_norm(X)
-
-        return X
+        return self.final_norm(X)
 
     def pretrain_forward(
         self,
@@ -137,41 +107,21 @@ class TrajGPT(nn.Module):
         pretrain_head: PretrainHead,
         forward_impl: str = "parallel",
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Forward pass for pretraining with next-token prediction.
-
-        Prepends [SOS] token and shifts targets right.
-
-        Args:
-            token_ids: Input token IDs (batch, seq_len).
-            timestamps: Timestamps (batch, seq_len).
-            pretrain_head: PretrainHead module.
-            forward_impl: Forward implementation mode.
-
-        Returns:
-            (loss, logits).
-        """
         B, N = token_ids.shape
-        device = token_ids.device
 
-        # Embed input tokens (right-shifted: drop last, prepend SOS)
-        token_emb = self.token_embedding(token_ids[:, :-1])  # (B, N-1, d_model)
+        token_emb = self.token_embedding(token_ids[:, :-1])
+        sos_emb = self.sos.unsqueeze(0).unsqueeze(0).expand(B, 1, -1)
+        X = torch.cat([sos_emb, token_emb], dim=1)
 
-        # Prepend learnable SOS embedding (matches official)
-        sos_emb = self.sos.unsqueeze(0).unsqueeze(0).expand(B, 1, -1)  # (B, 1, d_model)
-        X = torch.cat([sos_emb, token_emb], dim=1)  # (B, N, d_model)
-
-        # Timestamps: prepend first timestamp for SOS position
         t0 = timestamps[:, :1]
         input_timestamps = torch.cat([t0, timestamps[:, :-1]], dim=1)
 
-        # Forward through SRA blocks (bypass token_embedding since we already embedded)
         for layer in self.layers:
-            X = layer(X, input_timestamps, forward_impl)
+            layer_out = layer(X, input_timestamps, forward_impl=forward_impl)
+            X = layer_out[0] if isinstance(layer_out, tuple) else layer_out
         hidden_states = self.final_norm(X)
 
-        # Compute loss against original tokens (targets)
         loss, logits = pretrain_head(hidden_states, token_ids)
-
         return loss, logits
 
     def extract_representations(
@@ -181,33 +131,15 @@ class TrajGPT(nn.Module):
         mask: torch.Tensor | None = None,
         forward_impl: str = "parallel",
     ) -> torch.Tensor:
-        """Extract patient representations (embeddings).
-
-        Uses the last valid hidden state as the patient representation.
-
-        Args:
-            token_ids: Input token IDs (batch, seq_len).
-            timestamps: Timestamps (batch, seq_len).
-            mask: Optional boolean mask (batch, seq_len), True for valid tokens.
-            forward_impl: Forward implementation mode.
-
-        Returns:
-            Representations (batch, d_model).
-        """
+        """Return time-specific (last valid step) hidden-state representation."""
         hidden_states = self.forward(token_ids, timestamps, forward_impl)
 
         if mask is not None:
-            # Get last valid position for each sequence
-            lengths = mask.sum(dim=1).long()  # (B,)
-            # Gather the hidden state at the last valid position
+            lengths = mask.sum(dim=1).long()
             indices = (lengths - 1).clamp(min=0)
-            representations = hidden_states[torch.arange(hidden_states.size(0)), indices]
-        else:
-            # Use last position
-            representations = hidden_states[:, -1, :]
+            return hidden_states[torch.arange(hidden_states.size(0), device=hidden_states.device), indices]
 
-        return representations
+        return hidden_states[:, -1, :]
 
     def count_parameters(self) -> int:
-        """Count total trainable parameters."""
         return sum(p.numel() for p in self.parameters() if p.requires_grad)

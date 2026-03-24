@@ -124,7 +124,7 @@ def load_task_labels(labels_dir: str, task: TaskSpec) -> pd.DataFrame:
 
 def build_patient_sequences(
     meds_df: pd.DataFrame,
-    max_length: int = 256,
+    max_length: int | None = 256,
 ) -> dict[int, dict]:
     """Convert MEDS events into per-patient sequences for model input.
 
@@ -136,19 +136,23 @@ def build_patient_sequences(
         Dict mapping subject_id -> {
             "codes": list[str],           # code strings
             "times": list[datetime],      # event timestamps
-            "numeric_values": list[float] # numeric values (NaN if absent)
+            "numeric_values": list[float],# numeric values (NaN if absent)
+            "units": list[str | None],    # measurement units if present
+            "omop_tables": list[str | None], # source tables if present
         }
     """
     patients = {}
     for subject_id, group in meds_df.groupby("subject_id"):
         group = group.sort_values("time")
-        if len(group) > max_length:
+        if max_length is not None and len(group) > max_length:
             group = group.tail(max_length)
 
         patients[subject_id] = {
             "codes": group["code"].tolist(),
             "times": group["time"].tolist(),
             "numeric_values": group.get("numeric_value", pd.Series([np.nan] * len(group))).tolist(),
+            "units": group.get("unit", pd.Series([None] * len(group))).tolist(),
+            "omop_tables": group.get("omop_table", pd.Series([None] * len(group))).tolist(),
         }
     return patients
 

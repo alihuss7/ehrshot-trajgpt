@@ -1,14 +1,9 @@
 from __future__ import annotations
 
-"""TrajGPT patient embedder.
-
-Loads a pretrained TrajGPT checkpoint and extracts patient representations
-for downstream evaluation via the PatientEmbedder interface.
-"""
+"""TrajGPT patient embedder for EHRSHOT evaluation."""
 
 import bisect
 from datetime import datetime
-from pathlib import Path
 
 import numpy as np
 import torch
@@ -20,7 +15,7 @@ from models.trajgpt.tokenizer import EHRTokenizer
 
 
 class TrajGPTEmbedder(PatientEmbedder):
-    """TrajGPT embedder for EHRSHOT evaluation."""
+    """TrajGPT embedder (time-specific last-state representation)."""
 
     def __init__(
         self,
@@ -30,83 +25,88 @@ class TrajGPTEmbedder(PatientEmbedder):
         batch_size: int = 64,
         max_seq_len: int = 256,
     ):
-        self.device = device
+        self.device = self._resolve_device(device)
         self.batch_size = batch_size
         self.max_seq_len = max_seq_len
 
-        # Load tokenizer
         self.tokenizer = EHRTokenizer.load(tokenizer_path)
 
-        # Load checkpoint
         print(f"Loading TrajGPT from {checkpoint_path}...")
-        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+        checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
         config = checkpoint.get("config", {})
 
         self._d_model = config.get("d_model", 200)
-
-        # Initialize model
         self.model = TrajGPT(
             vocab_size=self.tokenizer.vocab_size,
             d_model=self._d_model,
-            qk_dim=config.get("d_model", 200),
+            qk_dim=config.get("qk_dim", config.get("d_model", 200)),
             v_dim=config.get("v_dim", 400),
             ff_dim=config.get("ff_dim", 800),
             num_layers=config.get("num_layers", 8),
             num_heads=config.get("num_heads", 4),
             tau=config.get("tau", 20.0),
-            dropout=0.0,  # no dropout at inference
+            dropout=0.0,
             max_seq_len=max_seq_len,
             pad_id=self.tokenizer.pad_id,
             sos_id=self.tokenizer.sos_id,
-        ).to(device)
+            forecast_method=config.get("forecast_method", "time_specific"),
+            use_bias_in_sra=config.get("use_bias_in_sra", False),
+            use_bias_in_mlp=config.get("use_bias_in_mlp", True),
+            use_bias_in_sra_out=config.get("use_bias_in_sra_out", False),
+            use_default_gamma=config.get("use_default_gamma", False),
+            output_retentions=config.get("output_retentions", False),
+            use_cache=config.get("use_cache", True),
+            forward_impl=config.get("forward_impl", "parallel"),
+        ).to(self.device)
 
-        self.model.load_state_dict(checkpoint["model_state_dict"])
+        try:
+            self.model.load_state_dict(checkpoint["model_state_dict"])
+        except RuntimeError as e:
+            raise RuntimeError(
+                "Checkpoint architecture mismatch with strict TrajGPT mode. "
+                "This checkpoint was trained with an older model variant. "
+                "Rerun `scripts/03_pretrain_trajgpt.py` using the updated "
+                "`configs/trajgpt_ehrshot.yaml`, then extract embeddings."
+            ) from e
         self.model.eval()
-        print(f"TrajGPT loaded. Device: {device}, Params: {self.model.count_parameters():,}")
+        print(f"TrajGPT loaded. Device: {self.device}, Params: {self.model.count_parameters():,}")
+
+    def _resolve_device(self, device_cfg: str) -> str:
+        if device_cfg != "auto":
+            return device_cfg
+        if torch.cuda.is_available():
+            return "cuda"
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return "mps"
+        return "cpu"
 
     @property
     def embedding_dim(self) -> int:
         return self._d_model
 
     def precompute_patient_tokens(self, patient_data: dict[int, dict]):
-        """Pre-encode all patient codes to token IDs once.
-
-        Call this before embed_patients() to avoid re-encoding per label row.
-        Stores results in self._patient_tokens and self._patient_times.
-        """
+        """Pre-encode code tokens once per patient."""
         self._patient_tokens = {}
         self._patient_times = {}
         for pid, seq in patient_data.items():
             self._patient_tokens[pid] = self.tokenizer.encode(seq["codes"])
             self._patient_times[pid] = seq["times"]
 
-    def _prepare_patient(
-        self,
-        subject_id: int,
-        prediction_time: datetime,
-    ) -> dict | None:
-        """Prepare a patient sequence for model input.
-
-        Uses binary search for fast truncation at prediction_time.
-        Expects precompute_patient_tokens() to have been called.
-        """
+    def _prepare_patient(self, subject_id: int, prediction_time: datetime) -> dict | None:
         if subject_id not in self._patient_times:
             return None
 
         times = self._patient_times[subject_id]
         tokens = self._patient_tokens[subject_id]
 
-        # Binary search: find cutoff index where times <= prediction_time
         cutoff = bisect.bisect_right(times, prediction_time)
         if cutoff == 0:
             return None
 
-        # Keep most recent max_seq_len events up to cutoff
         start = max(0, cutoff - self.max_seq_len)
         seq_tokens = tokens[start:cutoff]
         seq_times = times[start:cutoff]
 
-        # Convert timestamps to days relative to first event in window
         t0 = seq_times[0]
         days = []
         for t in seq_times:
@@ -114,7 +114,7 @@ class TrajGPTEmbedder(PatientEmbedder):
             if hasattr(delta, "total_seconds"):
                 days.append(delta.total_seconds() / 86400.0)
             else:
-                days.append(float(delta) / 1e9 / 86400.0 if hasattr(delta, '__float__') else 0.0)
+                days.append(float(delta) / 1e9 / 86400.0 if hasattr(delta, "__float__") else 0.0)
 
         return {
             "token_ids": seq_tokens,
@@ -127,14 +127,11 @@ class TrajGPTEmbedder(PatientEmbedder):
         patient_data: dict[int, dict],
         prediction_times: list[tuple[int, datetime]],
     ) -> np.ndarray:
-        """Extract TrajGPT embeddings for patients at prediction times."""
         all_embeddings = np.zeros((len(prediction_times), self.embedding_dim), dtype=np.float32)
 
-        # Pre-encode all patient tokens once
         if not hasattr(self, "_patient_tokens"):
             self.precompute_patient_tokens(patient_data)
 
-        # Stream batches to keep memory bounded for 406K label rows.
         batch_samples = []
         batch_indices = []
         n_valid = 0
@@ -159,7 +156,6 @@ class TrajGPTEmbedder(PatientEmbedder):
             self._run_batch(batch_samples, batch_indices, all_embeddings)
 
         print(f"  {n_valid}/{len(prediction_times)} samples embedded")
-
         return all_embeddings
 
     def _run_batch(
@@ -168,7 +164,6 @@ class TrajGPTEmbedder(PatientEmbedder):
         batch_indices: list[int],
         all_embeddings: np.ndarray,
     ) -> None:
-        """Run one inference batch and write embeddings to output array."""
         max_len = max(s["length"] for s in batch_samples)
         B = len(batch_samples)
 
@@ -188,7 +183,10 @@ class TrajGPTEmbedder(PatientEmbedder):
 
         with torch.no_grad():
             representations = self.model.extract_representations(
-                token_ids_t, timestamps_t, masks_t, forward_impl="parallel"
+                token_ids_t,
+                timestamps_t,
+                masks_t,
+                forward_impl="parallel",
             )
 
         all_embeddings[batch_indices] = representations.cpu().numpy()

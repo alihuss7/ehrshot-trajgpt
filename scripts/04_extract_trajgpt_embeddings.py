@@ -54,7 +54,7 @@ def main():
 
     print("Building patient sequences...")
     t0 = time.time()
-    patient_data = build_patient_sequences(meds_df, max_length=10**9)
+    patient_data = build_patient_sequences(meds_df, max_length=None)
     print(f"  {len(patient_data)} patients ({time.time()-t0:.1f}s)")
     del meds_df  # free memory
 
