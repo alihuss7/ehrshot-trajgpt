@@ -24,49 +24,49 @@ This file tracks:
 
 Source files:
 
-- `results/trajgpt_gen2_2026-03-24/comparison/macro_by_k_auroc_mean.csv`
-- `results/trajgpt_gen2_2026-03-24/comparison/macro_by_k_auprc_mean.csv`
-- `results/trajgpt_gen2_2026-03-24/comparison/macro_by_category_auroc_mean.csv`
-- `results/trajgpt_gen2_2026-03-24/comparison/macro_by_category_auprc_mean.csv`
+- `results/trajgpt_gen3_2026-03-24/comparison/macro_by_k_auroc_mean.csv`
+- `results/trajgpt_gen3_2026-03-24/comparison/macro_by_k_auprc_mean.csv`
+- `results/trajgpt_gen3_2026-03-24/comparison/macro_by_category_auroc_mean.csv`
+- `results/trajgpt_gen3_2026-03-24/comparison/macro_by_category_auprc_mean.csv`
 
-Gen3 note:
+Gen3 snapshot:
 
 - Gen3 evaluation is complete at `results/trajgpt_gen3_2026-03-24/summary.csv`.
 - Gen3 macro at `k=-1` (TrajGPT only): `AUROC=0.6280`, `AUPRC=0.2168`.
-- Gen2 macro at `k=-1` (TrajGPT only): `AUROC=0.6327`, `AUPRC=0.2178`.
-- The comparison tables below are the Gen2 comparison snapshot against CLMBR-T-base.
+- The comparison tables below are the Gen3 comparison snapshot against CLMBR-T-base.
 
-### Macro AUROC by k-shot (selected)
-
-|   k | CLMBR-T-base | TrajGPT | Delta (TrajGPT - CLMBR) |
-| --: | -----------: | ------: | ----------------------: |
-|  -1 |       0.8066 |  0.6435 |                 -0.1631 |
-|   1 |       0.5548 |  0.5115 |                 -0.0433 |
-|   4 |       0.5797 |  0.5170 |                 -0.0627 |
-|  16 |       0.5963 |  0.5266 |                 -0.0697 |
-|  64 |       0.6394 |  0.5298 |                 -0.1096 |
-| 128 |       0.6708 |  0.5386 |                 -0.1322 |
-
-### Macro AUPRC by k-shot (selected)
+### Macro AUROC by k-shot
 
 |   k | CLMBR-T-base | TrajGPT | Delta (TrajGPT - CLMBR) |
 | --: | -----------: | ------: | ----------------------: |
-|  -1 |       0.3808 |  0.2226 |                 -0.1582 |
-|   1 |       0.2776 |  0.2513 |                 -0.0262 |
-|   4 |       0.2489 |  0.2214 |                 -0.0275 |
-|  16 |       0.2479 |  0.2011 |                 -0.0468 |
-|  64 |       0.2485 |  0.1792 |                 -0.0693 |
-| 128 |       0.2469 |  0.1649 |                 -0.0820 |
+|  -1 |       0.8066 |  0.6280 |                 -0.1787 |
+|   1 |       0.5548 |  0.5099 |                 -0.0449 |
+|   4 |       0.5797 |  0.5194 |                 -0.0602 |
+|  16 |       0.5963 |  0.5244 |                 -0.0719 |
+|  64 |       0.6394 |  0.5232 |                 -0.1162 |
+| 128 |       0.6708 |  0.5347 |                 -0.1360 |
+
+### Macro AUPRC by k-shot
+
+|   k | CLMBR-T-base | TrajGPT | Delta (TrajGPT - CLMBR) |
+| --: | -----------: | ------: | ----------------------: |
+|  -1 |       0.3808 |  0.2168 |                 -0.1640 |
+|   1 |       0.2776 |  0.2509 |                 -0.0266 |
+|   4 |       0.2489 |  0.2209 |                 -0.0281 |
+|  16 |       0.2479 |  0.2021 |                 -0.0458 |
+|  64 |       0.2485 |  0.1784 |                 -0.0701 |
+| 128 |       0.2469 |  0.1619 |                 -0.0849 |
 
 ### Macro AUROC by Category at k = -1
 
 | Category    | CLMBR-T-base | TrajGPT |   Delta |
 | ----------- | -----------: | ------: | ------: |
-| diagnosis   |       0.7737 |  0.6107 | -0.1631 |
-| imaging     |       0.7926 |  0.7315 | -0.0612 |
-| lab         |       0.8352 |  0.6488 | -0.1863 |
-| operational |       0.8295 |  0.6709 | -0.1586 |
+| diagnosis   |       0.7737 |  0.5930 | -0.1807 |
+| imaging     |       0.7926 |  0.7360 | -0.0566 |
+| lab         |       0.8352 |  0.6381 | -0.1971 |
+| operational |       0.8295 |  0.6450 | -0.1845 |
 
+<!--
 ## Change History (Modeling + Pipeline)
 
 ### v1 (baseline)
@@ -118,7 +118,8 @@ Gen3 note:
   - `results/trajgpt_gen3_2026-03-24/summary.csv`
   - macro (`k=-1`) TrajGPT: `AUROC=0.6280`, `AUPRC=0.2168`
 - Gen3 comparison artifacts vs CLMBR-T-base generated at:
-  - `results/trajgpt_gen3_2026-03-24/comparison/`
+- `results/trajgpt_gen3_2026-03-24/comparison/`
+-->
 
 ## Experiment Log
 
