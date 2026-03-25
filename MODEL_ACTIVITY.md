@@ -1,11 +1,5 @@
 # Model Activity Log (CLMBR vs TrajGPT)
 
-This file tracks:
-
-- what changed in the modeling pipeline,
-- what was run,
-- and the latest comparison outcomes.
-
 ## Current Baseline Snapshot
 
 - Baseline commit: `20534c8` (`main`)
