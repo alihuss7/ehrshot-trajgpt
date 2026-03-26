@@ -1,6 +1,6 @@
 # ehrshot-trajgpt
 
-Comparing **TrajGPT** (Selective Recurrent Attention) against **CLMBR-T-base** (pretrained Transformer) on the [EHRSHOT benchmark](https://ehrshot.stanford.edu/) — 15 clinical prediction tasks across 6,739 patients.
+Comparing **TrajGPT** (Selective Recurrent Attention) against **CLMBR-T-base** (pretrained Transformer) on the [EHRSHOT benchmark](https://ehrshot.stanford.edu/) (15 clinical prediction tasks across 6,739 patients).
 
 ## Setup
 
@@ -18,10 +18,10 @@ pip install -r requirements.txt
 
 Request access at [Redivis](https://redivis.com/) and download:
 
-| File                 | Size   | Required                                                    |
-| -------------------- | ------ | ----------------------------------------------------------- |
-| `EHRSHOT_ASSETS.zip` | 4.3 GB | Yes — precomputed CLMBR embeddings, labels, few-shot splits |
-| `EHRSHOT_MEDS.zip`   | 191 MB | Yes — MEDS-format patient event data for TrajGPT training   |
+| File                 | Size   | Required                                              |
+| -------------------- | ------ | ----------------------------------------------------- |
+| `EHRSHOT_ASSETS.zip` | 4.3 GB | precomputed CLMBR embeddings, labels, few-shot splits |
+| `EHRSHOT_MEDS.zip`   | 191 MB | MEDS-format patient event data for TrajGPT training   |
 
 Extract both into the `data/` directory:
 
