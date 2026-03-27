@@ -61,7 +61,11 @@ class EHRPretrainDataset(Dataset):
                 if hasattr(delta, "total_seconds"):
                     days.append(delta.total_seconds() / 86400.0)
                 else:
-                    days.append(float(delta) / 1e9 / 86400.0 if hasattr(delta, "__float__") else 0.0)
+                    days.append(
+                        float(delta) / 1e9 / 86400.0
+                        if hasattr(delta, "__float__")
+                        else 0.0
+                    )
 
             self.samples.append(
                 {
@@ -122,9 +126,15 @@ def load_ehrshot_splits(assets_dir: str) -> tuple[set[int], set[int], set[int]]:
             f"Split file must contain columns {required_cols}, got {set(split_df.columns)}"
         )
 
-    train_ids = set(split_df.loc[split_df["split"] == "train", "omop_person_id"].astype(int))
-    val_ids = set(split_df.loc[split_df["split"] == "val", "omop_person_id"].astype(int))
-    test_ids = set(split_df.loc[split_df["split"] == "test", "omop_person_id"].astype(int))
+    train_ids = set(
+        split_df.loc[split_df["split"] == "train", "omop_person_id"].astype(int)
+    )
+    val_ids = set(
+        split_df.loc[split_df["split"] == "val", "omop_person_id"].astype(int)
+    )
+    test_ids = set(
+        split_df.loc[split_df["split"] == "test", "omop_person_id"].astype(int)
+    )
     return train_ids, val_ids, test_ids
 
 
@@ -281,7 +291,9 @@ def main():
             timestamps = batch["timestamps"].to(device)
 
             optimizer.zero_grad()
-            loss, _ = model.pretrain_forward(token_ids, timestamps, pretrain_head, forward_impl)
+            loss, _ = model.pretrain_forward(
+                token_ids, timestamps, pretrain_head, forward_impl
+            )
             loss.backward()
             torch.nn.utils.clip_grad_norm_(all_params, 1.0)
             optimizer.step()
@@ -301,7 +313,9 @@ def main():
             for batch in val_loader:
                 token_ids = batch["token_ids"].to(device)
                 timestamps = batch["timestamps"].to(device)
-                loss, _ = model.pretrain_forward(token_ids, timestamps, pretrain_head, forward_impl)
+                loss, _ = model.pretrain_forward(
+                    token_ids, timestamps, pretrain_head, forward_impl
+                )
                 val_loss += loss.item()
                 val_batches += 1
 

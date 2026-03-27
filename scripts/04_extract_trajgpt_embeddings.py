@@ -42,14 +42,18 @@ def main():
 
     assets_dir = Path(config["assets_dir"])
     checkpoint_dir = Path(config["checkpoint_dir"])
-    checkpoint_path = str(Path(args.checkpoint) if args.checkpoint else checkpoint_dir / "best_model.pt")
+    checkpoint_path = str(
+        Path(args.checkpoint) if args.checkpoint else checkpoint_dir / "best_model.pt"
+    )
     tokenizer_path = str(checkpoint_dir / "tokenizer.json")
 
     # ── Load MEDS data and build patient sequences ──
     print("Loading MEDS dataset...")
     t0 = time.time()
     meds_df = load_meds_dataset(config["meds_data_dir"])
-    print(f"  {len(meds_df)} events, {meds_df['subject_id'].nunique()} patients ({time.time()-t0:.1f}s)")
+    print(
+        f"  {len(meds_df)} events, {meds_df['subject_id'].nunique()} patients ({time.time()-t0:.1f}s)"
+    )
 
     print("Building patient sequences...")
     t0 = time.time()
@@ -108,10 +112,14 @@ def main():
         pickle.dump(features, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     print(f"\nSaved to {features_path}")
-    print(f"  data_matrix: {features['data_matrix'].shape} ({features['data_matrix'].dtype})")
+    print(
+        f"  data_matrix: {features['data_matrix'].shape} ({features['data_matrix'].dtype})"
+    )
     print(f"\nRun evaluation with:")
-    print(f"  python scripts/02_run_evaluation.py --assets_dir {assets_dir} "
-          f"--features {features_path} --model_name trajgpt --output_dir {config['results_dir']}")
+    print(
+        f"  python scripts/02_run_evaluation.py --assets_dir {assets_dir} "
+        f"--features {features_path} --model_name trajgpt --output_dir {config['results_dir']}"
+    )
 
 
 if __name__ == "__main__":

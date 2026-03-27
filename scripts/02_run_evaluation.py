@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 def load_features(features_path: str) -> dict:
     """Load precomputed feature embeddings from pickle."""
     import pickle
+
     with open(features_path, "rb") as f:
         return pickle.load(f)
 
@@ -120,8 +121,12 @@ def train_and_evaluate(
             valid = y_test_bin.sum(axis=0) > 0
             if valid.sum() < 2:
                 return {"auroc": float("nan"), "auprc": float("nan")}
-            auroc = roc_auc_score(y_test_bin[:, valid], y_score[:, valid], average="macro")
-            auprc = average_precision_score(y_test_bin[:, valid], y_score[:, valid], average="macro")
+            auroc = roc_auc_score(
+                y_test_bin[:, valid], y_score[:, valid], average="macro"
+            )
+            auprc = average_precision_score(
+                y_test_bin[:, valid], y_score[:, valid], average="macro"
+            )
         else:
             scores = y_score[:, 1] if y_score.ndim == 2 else y_score
             auroc = roc_auc_score(y_test, scores)
@@ -135,12 +140,22 @@ def train_and_evaluate(
 def main():
     parser = argparse.ArgumentParser(description="Run EHRSHOT few-shot evaluation")
     parser.add_argument("--assets_dir", type=str, default="data/EHRSHOT_ASSETS")
-    parser.add_argument("--features", type=str, default=None,
-                        help="Path to features pickle (default: assets_dir/features/clmbr_features.pkl)")
-    parser.add_argument("--tasks", nargs="*", default=None,
-                        help="Tasks to evaluate (default: all)")
-    parser.add_argument("--k_shots", nargs="*", type=str, default=None,
-                        help="k values to evaluate (default: all available)")
+    parser.add_argument(
+        "--features",
+        type=str,
+        default=None,
+        help="Path to features pickle (default: assets_dir/features/clmbr_features.pkl)",
+    )
+    parser.add_argument(
+        "--tasks", nargs="*", default=None, help="Tasks to evaluate (default: all)"
+    )
+    parser.add_argument(
+        "--k_shots",
+        nargs="*",
+        type=str,
+        default=None,
+        help="k values to evaluate (default: all available)",
+    )
     parser.add_argument("--model_name", type=str, default="clmbr-t-base")
     parser.add_argument("--output_dir", type=str, default="results/clmbr-t-base")
     args = parser.parse_args()
@@ -167,10 +182,13 @@ def main():
     print(f"  Test patients: {len(test_pids)}")
 
     # Discover tasks
-    all_tasks = sorted([
-        d.name for d in benchmark_dir.iterdir()
-        if d.is_dir() and (d / "labeled_patients.csv").exists()
-    ])
+    all_tasks = sorted(
+        [
+            d.name
+            for d in benchmark_dir.iterdir()
+            if d.is_dir() and (d / "labeled_patients.csv").exists()
+        ]
+    )
     tasks = args.tasks if args.tasks else all_tasks
     print(f"\nTasks to evaluate: {tasks}")
 
@@ -185,11 +203,15 @@ def main():
 
         # Load task labels
         task_labels = pd.read_csv(task_dir / "labeled_patients.csv")
-        print(f"  Labels: {len(task_labels)}, type: {task_labels['label_type'].iloc[0]}")
+        print(
+            f"  Labels: {len(task_labels)}, type: {task_labels['label_type'].iloc[0]}"
+        )
         print(f"  Value dist: {task_labels['value'].value_counts().to_dict()}")
 
         # Match embeddings (aligned with task_labels row order)
-        X_all, y_all, matched = match_task_embeddings(task_labels, feat_lookup, embeddings)
+        X_all, y_all, matched = match_task_embeddings(
+            task_labels, feat_lookup, embeddings
+        )
         n_matched = matched.sum()
         print(f"  Matched embeddings: {n_matched}/{len(task_labels)}")
 
@@ -244,7 +266,9 @@ def main():
                     continue
 
                 label_type = task_labels["label_type"].iloc[0]
-                metrics = train_and_evaluate(X_train, y_train, X_test, y_test, label_type)
+                metrics = train_and_evaluate(
+                    X_train, y_train, X_test, y_test, label_type
+                )
                 rep_results.append(metrics)
 
             if not rep_results:
@@ -260,20 +284,24 @@ def main():
             auprc_std = np.std(auprcs) if auprcs else float("nan")
 
             label = "all" if k == -1 else str(k)
-            print(f"  k={label:>4}: AUROC={auroc_mean:.4f}+/-{auroc_std:.4f}  "
-                  f"AUPRC={auprc_mean:.4f}+/-{auprc_std:.4f}  ({len(rep_results)} reps)")
+            print(
+                f"  k={label:>4}: AUROC={auroc_mean:.4f}+/-{auroc_std:.4f}  "
+                f"AUPRC={auprc_mean:.4f}+/-{auprc_std:.4f}  ({len(rep_results)} reps)"
+            )
 
-            all_results.append({
-                "model": args.model_name,
-                "task": task_name,
-                "k": k,
-                "auroc_mean": auroc_mean,
-                "auroc_std": auroc_std,
-                "auprc_mean": auprc_mean,
-                "auprc_std": auprc_std,
-                "n_replicates": len(rep_results),
-                "n_test": len(X_test),
-            })
+            all_results.append(
+                {
+                    "model": args.model_name,
+                    "task": task_name,
+                    "k": k,
+                    "auroc_mean": auroc_mean,
+                    "auroc_std": auroc_std,
+                    "auprc_mean": auprc_mean,
+                    "auprc_std": auprc_std,
+                    "n_replicates": len(rep_results),
+                    "n_test": len(X_test),
+                }
+            )
 
     # Save summary
     if all_results:
@@ -306,7 +334,9 @@ def main():
                 print(f"  {task_name:>25s}: no valid results")
             else:
                 best = valid.loc[valid["auroc_mean"].idxmax()]
-                print(f"  {task_name:>25s}: AUROC={best['auroc_mean']:.4f} (k={int(best['k'])})")
+                print(
+                    f"  {task_name:>25s}: AUROC={best['auroc_mean']:.4f} (k={int(best['k'])})"
+                )
 
 
 if __name__ == "__main__":

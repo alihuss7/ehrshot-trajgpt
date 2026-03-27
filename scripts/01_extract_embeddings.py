@@ -48,11 +48,14 @@ def main():
         print(f"  {len(labels_df)} labels, {len(pairs)} unique (patient, time) pairs")
 
     prediction_times = sorted(all_pairs)
-    print(f"\nTotal unique (patient, time) pairs across all tasks: {len(prediction_times)}")
+    print(
+        f"\nTotal unique (patient, time) pairs across all tasks: {len(prediction_times)}"
+    )
 
     # Build patient data dict
     print("Building patient sequences...")
     from ehrshot.data_loading import build_patient_sequences
+
     patient_data = build_patient_sequences(meds_df)
 
     # Initialize embedder

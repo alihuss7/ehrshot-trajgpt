@@ -90,7 +90,9 @@ def print_macro_by_k(df: pd.DataFrame, metric_col: str) -> None:
     for k in sorted(macro_df["k"].unique()):
         row = f"{int(k):>5d}"
         for model in models:
-            vals = macro_df[(macro_df["k"] == k) & (macro_df["model"] == model)][metric_col]
+            vals = macro_df[(macro_df["k"] == k) & (macro_df["model"] == model)][
+                metric_col
+            ]
             row += f"  {vals.iloc[0]:>16.4f}" if len(vals) else f"  {'N/A':>16s}"
         print(row)
 

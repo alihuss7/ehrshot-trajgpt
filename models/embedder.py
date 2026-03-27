@@ -68,7 +68,9 @@ class CLMBRBaseEmbedder(PatientEmbedder):
         self.batch_size = batch_size
 
         print(f"Loading CLMBR-T-base from {model_hub_id}...")
-        self.tokenizer = femr.models.tokenizer.FEMRTokenizer.from_pretrained(model_hub_id)
+        self.tokenizer = femr.models.tokenizer.FEMRTokenizer.from_pretrained(
+            model_hub_id
+        )
         self.processor = femr.models.processor.FEMRBatchProcessor(self.tokenizer)
         self.model = femr.models.transformer.FEMRModel.from_pretrained(model_hub_id)
         self.model = self.model.to(device)
@@ -118,9 +120,9 @@ class CLMBRBaseEmbedder(PatientEmbedder):
         batch_raw = []
         batch_indices = []
 
-        for i, (subject_id, pred_time) in enumerate(tqdm(
-            prediction_times, desc="Extracting CLMBR embeddings"
-        )):
+        for i, (subject_id, pred_time) in enumerate(
+            tqdm(prediction_times, desc="Extracting CLMBR embeddings")
+        ):
             if subject_id not in patient_data:
                 embeddings.append(np.zeros(self.embedding_dim))
                 continue
@@ -129,9 +131,7 @@ class CLMBRBaseEmbedder(PatientEmbedder):
             patient = self._build_patient_for_femr(patient_seq, pred_time)
 
             try:
-                raw_batch = self.processor.convert_patient(
-                    patient, tensor_type="pt"
-                )
+                raw_batch = self.processor.convert_patient(patient, tensor_type="pt")
                 batch_raw.append(raw_batch)
                 batch_indices.append(i)
             except Exception as e:
@@ -161,7 +161,7 @@ class CLMBRBaseEmbedder(PatientEmbedder):
         while len(embeddings) < len(prediction_times):
             embeddings.append(np.zeros(self.embedding_dim))
 
-        return np.array(embeddings[:len(prediction_times)])
+        return np.array(embeddings[: len(prediction_times)])
 
     def _process_batch(self, batch_raw: list) -> list[np.ndarray]:
         """Run a batch through the model and extract representations."""
@@ -178,6 +178,5 @@ class CLMBRBaseEmbedder(PatientEmbedder):
             representations = result["representations"]
 
         return [
-            representations[i].cpu().numpy()
-            for i in range(representations.shape[0])
+            representations[i].cpu().numpy() for i in range(representations.shape[0])
         ]
